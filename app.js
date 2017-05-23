@@ -33,7 +33,8 @@ passport.use(new GitHubStrategy({
 ));
 
 var routes = require('./routes/index');
-var users = require('./routes/users');
+var login = require('./routes/login');
+var logout = require('./routes/logout');
 
 var app = express();
 app.use(helmet());
@@ -55,7 +56,29 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 app.use('/', routes);
-app.use('/users', users);
+app.use('/login', login);
+app.use('/logout', logout);
+
+// GitHub への認証を行うための処理を、 GET で /auth/github にアクセスした際に行うというものです。
+// またリクエストが行われた際の処理もなにもしない関数として登録してあります。
+app.get('/auth/github',
+  //GitHub に対して、 スコープを user:email として、認証を行うように設定しています。スコープというのは、 GitHub の OAuth2.0 で認可される権限の範囲のことを指します。
+  //GitHub の OAuth2.0 のスコープには、リポジトリのアクセスやユーザー同士のフォローに関してなど、様々なスコープが存在しています。
+  //https://developer.github.com/apps/building-integrations/setting-up-and-registering-oauth-apps/about-scopes-for-oauth-apps/
+  passport.authenticate('github', { scope: ['user:email'] }),
+  function(req, res){
+    // 認証実行時にログを出力する必要性がある場合にはこの関数に記述します。
+});
+
+//OAuth2.0 の仕組みの中で用いられる、 GitHub が利用者の許可に対する問い合わせの結果を送るパス の /auth/github/callback のハンドラを登録しています。
+//passport.authenticate('github', { failureRedirect: '/login' } で、認証が失敗した際には、再度ログインを促す /login にリダイレクトします。
+//認証に成功していた場合は、 / というドキュメントルートにリダイレクトするように実装しています。
+app.get('/auth/github/callback',
+  passport.authenticate('github', { failureRedirect: '/login' }),
+  function(req, res){
+    res.redirect('/');
+  }
+);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
