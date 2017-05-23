@@ -12,20 +12,30 @@ var GitHubStrategy = require('passport-github2').Strategy;
 var GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID
 var GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET
 
+//認証されたユーザー情報をどのようにセッションに保存し、どのようにセッションから読み出すか
+//下記の実装では、ユーザー情報の全てをそのままオブジェクトとしてセッションに保存し、そのまま全てを読みだす記述となっています。
+//done 関数は、第一引数にはエラーを、第二引数には結果をそれぞれ含めて実行する必要があります。
+//シリアライズ、デシリアライズとは、メモリ上に参照として飛び散ったデータを 0 と 1 で表せるバイナリのデータとして保存できる形式に変換したり、元に戻したりすることをいいます。
+//serializeUser には、ユーザーの情報をデータとして保存する処理を記述します。 
 passport.serializeUser((user, done)=>{
   done(null, user);
 });
-
+//deserializeUser は、保存されたデータをユーザーの情報として読み出す際の処理を設定します。
 passport.deserializeUser((obj, done)=>{
   done(null, obj);
 });
 
+//passport モジュールに、 GitHub を利用した認証の戦略オブジェクトを設定しています。
+//また認証後に実行する処理を、 process.nextTick 関数を利用して設定しています。
+//ここも上記のシリアライズ処理と同様で、処理が完了した後、 done 関数 を呼び出す必要があります。
 passport.use(new GitHubStrategy({
   clientID: GITHUB_CLIENT_ID,
   clientSecret: GITHUB_CLIENT_SECRET,
   callbackURL: 'http://localhost:8000/auth/github/callback'
 },
   function(accessToken, refreshToken, profile, done){
+    //外部認証を使ったログインが多発した際に、Web サービスの機能が全く動かなくなってしまうという問題を防ぐため、
+    //process.nextTickを使ってdone関数が非同期で実行されるようにする。
     process.nextTick(()=>{
       return done(null, profile);
     });
@@ -51,6 +61,9 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
+//express-session と passport でセッションを利用するという設定です。
+//express-session には、 セッション ID を作成されるときに利用される秘密鍵の文字列と、セッションを必ずストアに保存しない設定、セッションが初期化されてなくてもストアに保存しないという設定をそれぞれしてあります。
+//これはセキュリティ強化のための設定です。secretの値にはnode -e "console.log(require('crypto').randomBytes(8).toString('hex'));" で表示される文字列を利用
 app.use(session({ secret: '817ce4e97b2186d6', resave: false, saveUninitialized: false}));
 app.use(passport.initialize());
 app.use(passport.session());
