@@ -72,6 +72,7 @@ passport.use(new GitHubStrategy({
 var routes = require('./routes/index');
 var login = require('./routes/login');
 var logout = require('./routes/logout');
+var schedules = require('./routes/schedules');
 
 var app = express();
 app.use(helmet());
@@ -98,6 +99,7 @@ app.use(passport.session());
 app.use('/', routes);
 app.use('/login', login);
 app.use('/logout', logout);
+app.use('/schedules', schedules);
 
 // GitHub への認証を行うための処理を、 GET で /auth/github にアクセスした際に行うというものです。
 // またリクエストが行われた際の処理もなにもしない関数として登録してあります。
