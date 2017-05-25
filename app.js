@@ -8,6 +8,27 @@ var helmet = require('helmet');
 var session = require('express-session');
 var passport = require('passport');
 
+//モデルの読み込み
+var User = require('./models/user');
+var Schedule = require('./models/schedule');
+var Availability = require('./models/availability');
+var Candidate = require('./models/candidate');
+var Comment = require('./models/comment');
+//テーブルの作成とアソシエーションの定義
+//sequelize では、モデルを使ってエンティティ同士の関係を定義しておくことで、後で自動的に RDB 上でテーブルの結合をしてデータを取得することができます。
+User.sync().then(()=>{                                                   //usersテーブルが作成されたら　※他のテーブルに従属されてる側のテーブル（親のテーブル）は先に作る
+  Schedule.belongsTo(User, {foreignKey: 'createdBy'});                     //ユーザーは複数の予定を持つ。schedulesテーブルのcreatedBy（ユーザーidが入るカラム）からusersテーブルにつながる
+  Schedule.sync();                                                         //schedules（予定）テーブルの作成
+  Comment.belongsTo(User, {foreignKey: 'userId'});                         //ユーザーは複数のコメントを持つ。commentsテーブルのuserIdカラムからusersテーブルにつながる
+  Comment.sync();                                                          //comments（コメント）テーブルの作成
+  Availability.belongsTo(User, {foreignKey: 'userId'});                    //ユーザーは複数の出欠情報を持つ。availabilitiesテーブルのuserIdカラムからusersテーブルにつながる
+  Candidate.sync().then(()=>{                                              //candidates（候補日程）テーブルが作成されたら　※他のテーブルに従属されてる側のテーブル（親のテーブル）は先に作る
+    Availability.belongsTo(Candidate, {foreignKey: 'candidateId'});          //一つの候補日程は複数の出欠情報を持つ。availabilitiesテーブルのcandidateIdカラムからcandidatesテーブルにつながる
+    Availability.sync();                                                     //availabilities（出欠）テーブルの作成
+  });
+});
+//sync()とは？　データモデルの sync 関数が呼ばれると、defineで定義した内容にもとづいて SQL の CREATE TABLE が実行され、データベースとの対応が取れるようになります。
+
 var GitHubStrategy = require('passport-github2').Strategy;
 var GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID
 var GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET
@@ -37,7 +58,13 @@ passport.use(new GitHubStrategy({
     //外部認証を使ったログインが多発した際に、Web サービスの機能が全く動かなくなってしまうという問題を防ぐため、
     //process.nextTickを使ってdone関数が非同期で実行されるようにする。
     process.nextTick(()=>{
-      return done(null, profile);
+      //取得したユーザーIDとユーザー名(githubのユーザーid,ユーザー名)をusersテーブルに保存
+      User.upsert({                  //upsert 関数は、 INSERT または UPDATE を行う。主キーで識別されるデータがない場合にはデータを挿入し、ある場合には渡されたデータを元に更新を行ってくれます。
+        userId: profile.id,
+        username: profile.username
+      }).then(()=>{
+        done(null, profile);
+      });
     });
   }
 ));
