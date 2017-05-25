@@ -5,6 +5,7 @@ const authenticationEnsurer = require('./authentication-ensurer');
 const uuid = require('node-uuid');
 const Schedule = require('../models/schedule');
 const Candidate = require('../models/candidate');
+const User = require('../models/user');
 
 //ログイン時にしか/schedules/newが表示されないようにするため、new.jadeを表示させる前にミドルウェア「authenticationEnsurer」をかます
 //authenticationEnsurerではすでにログインしてたらnext、ログインしてなかったら/loginへリダイレクトさせる処理を書いてる
@@ -45,5 +46,39 @@ router.post('/', authenticationEnsurer, (req, res, next)=>{
 //req.param('scheduleName') => 'ラーメンを食べに行く'
 //req.param http://expressjs.com/ja/api.html#req.params
 //ちなみにURLの:idとかの部分が取れるreq.paramsや、URLのクエリが取得できるreq.queryなどもある
+
+router.get('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
+  Schedule.findOne({                      //findOneは対応するデータを 1 行だけ取得する
+    include:[                               //テーブルを結合してユーザーを取得する書き方。schedule.user というプロパティに、ユーザー情報が設定されます。
+      {                                     //schedule.jadeにてschedule.user.usernameで、そのスケジュールの作成者名を表示させたいので。
+        model: User,
+        attributes: ['userId', 'username']  //ユーザーの属性としては、ユーザー ID とユーザー名を取得する
+      }
+    ],
+    where:{
+      scheduleId: req.params.scheduleId    //req.paramsでurlに含まれる:scheduleIdの取得。このidを元に予定を探す。req.paramsはrailsで言うところのprams[:id]みたいな処理
+    },
+    order: '"updatedAt" DESC'
+  }).then((schedule)=>{                  //:scheduleIdの予定が見つかったら
+    if(schedule){
+      Candidate.findAll({
+          where: {scheduleId: schedule.scheduleId },  //見つかった予定のidを元に候補のデータを探す。（候補の外部キーはscheduleId）
+          order: '"candidateId" ASC'
+      }).then((candidates)=>{            //作成ユーザーが紐付いた予定データと、候補データが取得できたら
+        res.render('schedule', {           //scheduleビューを表示
+          user: req.user,
+          schedule: schedule,
+          candidates: candidates,
+          users: [req.user]
+        });
+      });
+    } else {
+      const err = new Error('指定された予定は見つかりません');
+      err.status = 404;
+      next(err);
+    }
+  });
+})
+
 
 module.exports = router;
