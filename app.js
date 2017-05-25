@@ -58,7 +58,13 @@ passport.use(new GitHubStrategy({
     //外部認証を使ったログインが多発した際に、Web サービスの機能が全く動かなくなってしまうという問題を防ぐため、
     //process.nextTickを使ってdone関数が非同期で実行されるようにする。
     process.nextTick(()=>{
-      return done(null, profile);
+      //取得したユーザーIDとユーザー名(githubのユーザーid,ユーザー名)をusersテーブルに保存
+      User.upsert({                  //upsert 関数は、 INSERT または UPDATE を行う。主キーで識別されるデータがない場合にはデータを挿入し、ある場合には渡されたデータを元に更新を行ってくれます。
+        userId: profile.id,
+        username: profile.username
+      }).then(()=>{
+        done(null, profile);
+      });
     });
   }
 ));
