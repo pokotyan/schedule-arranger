@@ -127,16 +127,24 @@ router.get('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
               console.log(availabilities);
             });
           });
-
-          res.render('schedule',{
-            user: req.user,
-            schedule: schedule,
-            candidates: candidates,
-            users: users,
-            availabilityMapMap: availabilityMapMap
+          //コメント取得
+          Comment.findAll({
+            where: { scheduleId: schedule.scheduleId }
+          }).then((comments) => {
+            const commentMap = new Map();  // key: userId, value: comment
+            comments.forEach((comment) => {
+              commentMap.set(comment.userId, comment.comment);
+            });
+            res.render('schedule', {
+              user: req.user,
+              schedule: schedule,
+              candidates: candidates,
+              users: users,
+              availabilityMapMap: availabilityMapMap,
+              commentMap: commentMap
+            });
           });
-        })
-
+        });
       });
     } else {
       const err = new Error('指定された予定は見つかりません');
