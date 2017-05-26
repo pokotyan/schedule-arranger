@@ -22,8 +22,10 @@ User.sync().then(()=>{                                                   //users
   Comment.belongsTo(User, {foreignKey: 'userId'});                         //ユーザーは複数のコメントを持つ。commentsテーブルのuserIdカラムからusersテーブルにつながる
   Comment.sync();                                                          //comments（コメント）テーブルの作成
   Availability.belongsTo(User, {foreignKey: 'userId'});                    //ユーザーは複数の出欠情報を持つ。availabilitiesテーブルのuserIdカラムからusersテーブルにつながる
+  User.hasMany(Availability, {foreignKey : 'userId'});
   Candidate.sync().then(()=>{                                              //candidates（候補日程）テーブルが作成されたら　※他のテーブルに従属されてる側のテーブル（親のテーブル）は先に作る
     Availability.belongsTo(Candidate, {foreignKey: 'candidateId'});          //一つの候補日程は複数の出欠情報を持つ。availabilitiesテーブルのcandidateIdカラムからcandidatesテーブルにつながる
+    Candidate.hasMany(Availability, {foreignKey: 'candidateId'});
     Availability.sync();                                                     //availabilities（出欠）テーブルの作成
   });
 });

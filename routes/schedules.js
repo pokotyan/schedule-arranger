@@ -118,6 +118,13 @@ router.get('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
 
           console.log(availabilityMapMap) //todo 除去
 
+          //ちなみにcandidates（候補） は出欠データがひも付いている。（候補 has_many 出欠）こんな感じで候補にひもづく出欠データを取得できる。
+          //ここでは使ってないけどスニペットとして書いとく
+          //has_manyのインスタンスはここのapiが使える　http://docs.sequelizejs.com/class/lib/associations/has-many.js~HasMany.html#instance-method-get
+          candidates[0].getAvailabilities().then((availabilities)=>{  //has_manyなテーブルを複数形にして頭にgetを付ける。返り値はpromiseなのでthenで受け取る
+            console.log(availabilities);
+          });
+
           res.render('schedule',{
             user: req.user,
             schedule: schedule,
