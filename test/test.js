@@ -2,9 +2,11 @@
 const request = require('supertest');
 const app = require('../app');
 const passportStub = require('passport-stub');
+const assert = require('assert');
 let User = require('../models/user');
 let Schedule = require('../models/schedule');
 let Candidate = require('../models/candidate');
+let Availability = require('../models/availability');
 
 describe('/login',()=>{
   //before 関数で記述された処理は describe 内のテスト前に実行されます
@@ -78,20 +80,75 @@ describe('/schedules', () => {
             .expect(/テスト候補2/)
             .expect(/テスト候補3/)
             .expect(200)
-            .end((err, res) => {
-              // テストで作成したデータを削除
-              let scheduleId = createdSchedulePath.split('/schedules/')[1];
-              Candidate.findAll({
-                where: { scheduleId: scheduleId }
-              }).then((candidates) => {
-                candidates.forEach((c) => { c.destroy(); });
-                Schedule.findById(scheduleId).then((s) => { s.destroy(); });  // findById 関数は、モデルに対応するデータを主キーによって 1 行だけ取得することができる
-              });
-              if (err) return done(err);
-              done();
-            });
+            .end((err, res) => { deleteScheduleAggregate(createdSchedulePath.split('/schedules/')[1], done, err);});
         });
     });
   });
 
 });
+
+describe('/schedules/:scheduleId/users/:userId/candidates/:candidateId', () => {
+  before(() => {
+    passportStub.install(app);
+    passportStub.login({ id: 0, username: 'testuser' });
+  });
+
+  after(() => {
+    passportStub.logout();
+    passportStub.uninstall(app);
+  });
+
+  it('出欠が更新できる', (done) => {
+    User.upsert({ userId: 0, username: 'testuser' }).then(() => {
+      request(app)
+        .post('/schedules')
+        .send({ scheduleName: 'テスト出欠更新予定1', memo: 'テスト出欠更新メモ1', candidates: 'テスト出欠更新候補1' })
+        .end((err, res) => {
+          const createdSchedulePath = res.headers.location;
+          const scheduleId = createdSchedulePath.split('/schedules/')[1];
+          Candidate.findOne({
+            where: { scheduleId: scheduleId }
+          }).then((candidate) => {
+            // 更新がされることをテスト
+            request(app)
+              .post(`/schedules/${scheduleId}/users/${0}/candidates/${candidate.candidateId}`)
+              .send({ availability: 2 }) // 出席に更新
+              .expect('{"status":"OK","availability":2}')        //webapiの返り値が想定通りか
+              .end((err, res) => { 
+                Availability.findAll({
+                  where: { scheduleId: scheduleId }
+                }).then((availabilities)=>{
+                  assert(availabilities.length, 1);              //ちゃんとdbに保存されているか
+                  assert(availabilities[0].availability, 2);     //ちゃんとdbに想定通りの値が保存されているか
+                  deleteScheduleAggregate(scheduleId, done, err); 
+                });
+              });
+          });
+        });
+    });
+  });
+});
+
+//テストのために作ったスケジュールを削除（スケジュールにひもづく出欠情報や候補情報も消す。）
+function deleteScheduleAggregate(scheduleId, done, err) {
+  Availability.findAll({
+    where: { scheduleId: scheduleId }
+  }).then((availabilities) => {
+    //まず出欠を削除
+    let promises = availabilities.map((a) => { return a.destroy(); }); //scheduleId を元に全ての出欠を取得し削除し。その結果の Promise オブジェクトの配列を取得(destroyの返りちはpromise)
+    Promise.all(promises).then(() => {                                 //ここのpromiseは同じブロックにあるpromiseを指す。一つ上の行のやつ。Promise.allは配列で渡された全ての Promise が終了した際に結果を返す
+      Candidate.findAll({
+        where: { scheduleId: scheduleId }
+      }).then((candidates) => {
+        //次は候補を削除
+        let promises = candidates.map((c) => { return c.destroy(); });
+        Promise.all(promises).then(() => {                             //ここのpromiseは同じブロックにあるpromiseを指す。一つ上の行のやつ
+          //最後に予定を削除
+          Schedule.findById(scheduleId).then((s) => { s.destroy(); });
+          if (err) return done(err);
+          done();
+        });
+      });
+    });
+  });
+}

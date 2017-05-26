@@ -6,6 +6,7 @@ const uuid = require('node-uuid');
 const Schedule = require('../models/schedule');
 const Candidate = require('../models/candidate');
 const User = require('../models/user');
+const Availability = require('../models/availability');
 
 //ログイン時にしか/schedules/newが表示されないようにするため、new.jadeを表示させる前にミドルウェア「authenticationEnsurer」をかます
 //authenticationEnsurerではすでにログインしてたらnext、ログインしてなかったら/loginへリダイレクトさせる処理を書いてる
@@ -65,12 +66,74 @@ router.get('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
           where: {scheduleId: schedule.scheduleId },  //見つかった予定のidを元に候補のデータを探す。（候補の外部キーはscheduleId）
           order: '"candidateId" ASC'
       }).then((candidates)=>{            //作成ユーザーが紐付いた予定データと、候補データが取得できたら
-        res.render('schedule', {           //scheduleビューを表示
-          user: req.user,
-          schedule: schedule,
-          candidates: candidates,
-          users: [req.user]
-        });
+        // データベースからその予定のすべての出欠を取得する
+        Availability.findAll({                    //findallで対応するデータをすべて取得する
+          include:[                                 //availability.user でその出欠にひもづくユーザー情報を手に入れるため、テーブルを結合しておく
+            {
+              model: User,
+              attributes: ['userId', 'username']    //手に入れる「その出欠に紐付いたユーザー情報」はユーザーidとユーザー名
+            }
+          ],
+          where: { scheduleId: schedule.scheduleId },
+          order: '"user.username" ASC, "candidateId" ASC'
+        }).then((availabilities)=>{
+          // 出欠MapMap(キー:ユーザー ID, 値:出欠Map(キー:候補 ID, 値:出欠)) を作成する
+          // 最終的にavailabilityMapMapはこんな感じになる　Map { '15885373' => Map { 13 => 0, 14 => 0, 15 => 0 } }
+          const availabilityMapMap = new Map();          // key: userId, value: Map(key: candidateId, availability)
+          availabilities.forEach((a)=>{
+            //内側のmapを作る
+            const map = availabilityMapMap.get(a.user.userId) || new Map();
+            map.set(a.candidateId, a.availability);
+            //作った内側のmapを外側のmapのバリューにセットする
+            availabilityMapMap.set(a.user.userId, map);  //includeでテーブルを結合しておいたからa.user.userIdが使える
+          });
+
+          //閲覧ユーザーと出欠に紐づくユーザーからユーザー Map (キー:ユーザー ID, 値:ユーザー) を作る
+          const usersMap = new Map();                           // key: userId, value: User
+          //まずは閲覧ユーザーの情報を入れる
+          usersMap.set(parseInt(req.user.id),{                  //parseIntは文字列を整数に変換してる
+            isSelf: true,                                      //リクエストが来たユーザーidはcurrent_userなのでisSelfはtrue
+            userId: parseInt(req.user.id),
+            username: req.user.username
+          });
+          //出欠データを回してそれぞれの出欠データにひもづくユーザー情報を入れる
+          availabilities.forEach((a)=>{
+            usersMap.set(a.user.userId, {
+              isSelf: parseInt(req.user.id) === a.user.userId, //リクエストが来たユーザーでないならisSelfではないのでfalse
+              userId: a.user.userId,
+              username: a.user.username
+            });
+          });
+
+          // 全ユーザー、全候補で二重ループしてそれぞれの出欠の値がない場合には、「欠席」を設定する
+          const users = Array.from(usersMap).map((userMap)=>{ return userMap[1] });  //各ユーザーのisSelf,userId,usernameのオブジェクトが詰まった配列を作る
+          users.forEach((u)=>{                                                       //ユーザーを回して
+            candidates.forEach((c)=>{                                                   //候補データを回して（candidatesはかなり前のthenを見て。）
+              const map = availabilityMapMap.get(u.userId) || new Map();                 //そのユーザーのバリュー(map)を処理するのが初めてならnew Mapする
+              const a = map.get(c.candidateId) || 0;                                     // デフォルト値は 0 を利用
+              map.set(c.candidateId, a);
+              availabilityMapMap.set(u.userId, map);
+            });
+          });
+
+          console.log(availabilityMapMap) //todo 除去
+
+          //ちなみにcandidates（候補） は出欠データがひも付いている。（候補 has_many 出欠）こんな感じで候補にひもづく出欠データを取得できる。
+          //ここでは使ってないけどスニペットとして書いとく
+          //has_manyのインスタンスはここのapiが使える　http://docs.sequelizejs.com/class/lib/associations/has-many.js~HasMany.html#instance-method-get
+          candidates[0].getAvailabilities().then((availabilities)=>{  //has_manyなテーブルを複数形にして頭にgetを付ける。返り値はpromiseなのでthenで受け取る
+            console.log(availabilities);
+          });
+
+          res.render('schedule',{
+            user: req.user,
+            schedule: schedule,
+            candidates: candidates,
+            users: users,
+            availabilityMapMap: availabilityMapMap
+          });
+        })
+
       });
     } else {
       const err = new Error('指定された予定は見つかりません');

@@ -22,8 +22,10 @@ User.sync().then(()=>{                                                   //users
   Comment.belongsTo(User, {foreignKey: 'userId'});                         //ユーザーは複数のコメントを持つ。commentsテーブルのuserIdカラムからusersテーブルにつながる
   Comment.sync();                                                          //comments（コメント）テーブルの作成
   Availability.belongsTo(User, {foreignKey: 'userId'});                    //ユーザーは複数の出欠情報を持つ。availabilitiesテーブルのuserIdカラムからusersテーブルにつながる
+  User.hasMany(Availability, {foreignKey : 'userId'});
   Candidate.sync().then(()=>{                                              //candidates（候補日程）テーブルが作成されたら　※他のテーブルに従属されてる側のテーブル（親のテーブル）は先に作る
     Availability.belongsTo(Candidate, {foreignKey: 'candidateId'});          //一つの候補日程は複数の出欠情報を持つ。availabilitiesテーブルのcandidateIdカラムからcandidatesテーブルにつながる
+    Candidate.hasMany(Availability, {foreignKey: 'candidateId'});
     Availability.sync();                                                     //availabilities（出欠）テーブルの作成
   });
 });
@@ -73,6 +75,7 @@ var routes = require('./routes/index');
 var login = require('./routes/login');
 var logout = require('./routes/logout');
 var schedules = require('./routes/schedules');
+var availabilities = require('./routes/availabilities');
 
 var app = express();
 app.use(helmet());
@@ -100,6 +103,7 @@ app.use('/', routes);
 app.use('/login', login);
 app.use('/logout', logout);
 app.use('/schedules', schedules);
+app.use('/schedules', availabilities);  //availabilitiesは出欠情報更新のwebapi
 
 // GitHub への認証を行うための処理を、 GET で /auth/github にアクセスした際に行うというものです。
 // またリクエストが行われた際の処理もなにもしない関数として登録してあります。
