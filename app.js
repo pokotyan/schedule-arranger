@@ -17,15 +17,16 @@ var Comment = require('./models/comment');
 //テーブルの作成とアソシエーションの定義
 //sequelize では、モデルを使ってエンティティ同士の関係を定義しておくことで、後で自動的に RDB 上でテーブルの結合をしてデータを取得することができます。
 User.sync().then(()=>{                                                   //usersテーブルが作成されたら　※他のテーブルに従属されてる側のテーブル（親のテーブル）は先に作る
-  Schedule.belongsTo(User, {foreignKey: 'createdBy'});                     //ユーザーは複数の予定を持つ。schedulesテーブルのcreatedBy（ユーザーidが入るカラム）からusersテーブルにつながる
+  Schedule.belongsTo(User, {foreignKey: 'createdBy'});                     //予定は一人の作成者にひもづく。schedulesテーブルのcreatedBy（ユーザーidが入るカラム）からusersテーブルにつながる
   Schedule.sync();                                                         //schedules（予定）テーブルの作成
-  Comment.belongsTo(User, {foreignKey: 'userId'});                         //ユーザーは複数のコメントを持つ。commentsテーブルのuserIdカラムからusersテーブルにつながる
+  Comment.belongsTo(User, {foreignKey: 'userId'});                         //コメントは一つのユーザーにひもづく。commentsテーブルのuserIdカラムからusersテーブルにつながる
+  User.hasMany(Comment, {foreignKey : 'userId'});                          //ユーザーは複数のコメントを持つ。
   Comment.sync();                                                          //comments（コメント）テーブルの作成
-  Availability.belongsTo(User, {foreignKey: 'userId'});                    //ユーザーは複数の出欠情報を持つ。availabilitiesテーブルのuserIdカラムからusersテーブルにつながる
-  User.hasMany(Availability, {foreignKey : 'userId'});
+  Availability.belongsTo(User, {foreignKey: 'userId'});                    //一つの出欠情報は一人のユーザーにひもづく。availabilitiesテーブルのuserIdカラムからusersテーブルにつながる
+  User.hasMany(Availability, {foreignKey : 'userId'});                     //ひとりのユーザーは複数の出欠情報を持つ
   Candidate.sync().then(()=>{                                              //candidates（候補日程）テーブルが作成されたら　※他のテーブルに従属されてる側のテーブル（親のテーブル）は先に作る
-    Availability.belongsTo(Candidate, {foreignKey: 'candidateId'});          //一つの候補日程は複数の出欠情報を持つ。availabilitiesテーブルのcandidateIdカラムからcandidatesテーブルにつながる
-    Candidate.hasMany(Availability, {foreignKey: 'candidateId'});
+    Availability.belongsTo(Candidate, {foreignKey: 'candidateId'});          //出欠情報は一つの候補日程にひもづく。availabilitiesテーブルのcandidateIdカラムからcandidatesテーブルにつながる
+    Candidate.hasMany(Availability, {foreignKey: 'candidateId'});            //一つの候補日程は複数の出欠情報を持つ
     Availability.sync();                                                     //availabilities（出欠）テーブルの作成
   });
 });
