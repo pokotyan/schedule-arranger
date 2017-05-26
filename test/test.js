@@ -7,6 +7,7 @@ let User = require('../models/user');
 let Schedule = require('../models/schedule');
 let Candidate = require('../models/candidate');
 let Availability = require('../models/availability');
+let Comment = require('../models/comment');
 
 describe('/login',()=>{
   //before 関数で記述された処理は describe 内のテスト前に実行されます
@@ -129,8 +130,57 @@ describe('/schedules/:scheduleId/users/:userId/candidates/:candidateId', () => {
   });
 });
 
-//テストのために作ったスケジュールを削除（スケジュールにひもづく出欠情報や候補情報も消す。）
+describe('/schedules/:scheduleId/users/:userId/comments', () => {
+  before(() => {
+    passportStub.install(app);
+    passportStub.login({ id: 0, username: 'testuser' });
+  });
+
+  after(() => {
+    passportStub.logout();
+    passportStub.uninstall(app);
+  });
+
+  it('コメントが更新できる', (done)=>{
+    User.upsert({
+      userId: 0,
+      username: 'testuser'
+    }).then(()=>{
+      request(app)
+        .post('/schedules')
+        .send({ scheduleName: 'テストコメント更新予定1', memo: 'テストコメント更新メモ1', candidates: 'テストコメント更新候補1' })
+        .end((err, res)=>{
+          const createdSchedulePath = res.headers.location;
+          const scheduleId = createdSchedulePath.split('/schedules/')[1];
+          // 更新がされることをテスト
+          request(app)
+            .post(`/schedules/${scheduleId}/users/${0}/comments`)
+            .send({ comment: 'testcomment' })
+            .expect('{"status":"OK","comment":"testcomment"}')          //webapiの返り値のjsonが想定通りな事
+            .end((err, res)=>{
+              Comment.findAll({
+                where: { scheduleId: scheduleId }
+              }).then((comments)=>{
+                assert.equal(comments.length, 1);                       //ちゃんとdbに保存されている事
+                assert.equal(comments[0].comment, 'testcomment');       //dbに保存されてる内容も想定通りな事
+                deleteScheduleAggregate(scheduleId, done, err);
+              });
+            });
+        });
+    });
+  });
+
+});
+
+//テストのために作ったスケジュールを削除（スケジュールにひもづく出欠情報や候補情報、コメントも消す。）
 function deleteScheduleAggregate(scheduleId, done, err) {
+  //コメントの削除
+  Comment.findAll({
+    where: { scheduleId: scheduleId }
+  }).then((comments)=>{ 
+    comments.map((c)=>{ return c.destroy(); });
+  });
+
   Availability.findAll({
     where: { scheduleId: scheduleId }
   }).then((availabilities) => {
