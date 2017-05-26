@@ -75,6 +75,7 @@ var routes = require('./routes/index');
 var login = require('./routes/login');
 var logout = require('./routes/logout');
 var schedules = require('./routes/schedules');
+var availabilities = require('./routes/availabilities');
 
 var app = express();
 app.use(helmet());
@@ -102,6 +103,7 @@ app.use('/', routes);
 app.use('/login', login);
 app.use('/logout', logout);
 app.use('/schedules', schedules);
+app.use('/schedules', availabilities);  //availabilitiesは出欠情報更新のwebapi
 
 // GitHub への認証を行うための処理を、 GET で /auth/github にアクセスした際に行うというものです。
 // またリクエストが行われた際の処理もなにもしない関数として登録してあります。
