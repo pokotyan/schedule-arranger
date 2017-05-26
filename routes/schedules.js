@@ -82,7 +82,7 @@ router.get('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
           const availabilityMapMap = new Map();          // key: userId, value: Map(key: candidateId, availability)
           availabilities.forEach((a)=>{
             //内側のmapを作る
-            const map = new Map();
+            const map = new Map();                       //todo　修正
             map.set(a.candidateId, a.availability);
             //作った内側のmapを外側のmapのバリューにセットする
             availabilityMapMap.set(a.user.userId, map);  //includeでテーブルを結合しておいたからa.user.userIdが使える

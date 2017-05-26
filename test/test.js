@@ -2,6 +2,7 @@
 const request = require('supertest');
 const app = require('../app');
 const passportStub = require('passport-stub');
+const assert = require('assert');
 let User = require('../models/user');
 let Schedule = require('../models/schedule');
 let Candidate = require('../models/candidate');
@@ -112,8 +113,16 @@ describe('/schedules/:scheduleId/users/:userId/candidates/:candidateId', () => {
             request(app)
               .post(`/schedules/${scheduleId}/users/${0}/candidates/${candidate.candidateId}`)
               .send({ availability: 2 }) // 出席に更新
-              .expect('{"status":"OK","availability":2}')
-              .end((err, res) => { deleteScheduleAggregate(scheduleId, done, err); });
+              .expect('{"status":"OK","availability":2}')        //webapiの返り値が想定通りか
+              .end((err, res) => { 
+                Availability.findAll({
+                  where: { scheduleId: scheduleId }
+                }).then((availabilities)=>{
+                  assert(availabilities.length, 1);              //ちゃんとdbに保存されているか
+                  assert(availabilities[0].availability, 2);     //ちゃんとdbに想定通りの値が保存されているか
+                  deleteScheduleAggregate(scheduleId, done, err); 
+                });
+              });
           });
         });
     });
