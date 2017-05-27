@@ -10334,6 +10334,7 @@ return jQuery;
 
 const $ = __webpack_require__(0);
 
+//自身の出欠の更新
 $('.availability-toggle-button').each((i, e) => {
   const button = $(e);
   button.click(() => {
@@ -10351,6 +10352,22 @@ $('.availability-toggle-button').each((i, e) => {
       });
   });
 });
+
+//自身のコメント編集
+const buttonSelfComment = $('#self-comment-button');
+buttonSelfComment.click(()=>{
+  const scheduleId = buttonSelfComment.data('schedule-id');
+  const userId = buttonSelfComment.data('user-id');
+  const currentComment = $('#self-comment').text();
+  const comment = prompt('コメントを255文字以内で入力してください',currentComment);  //promptで入力ダイアログを表示し、入力値をcommentに格納
+  if (comment) {
+    $.post(`/schedules/${scheduleId}/users/${userId}/comments`, //webapi（comments.js）を叩く
+      { comment: comment },                                     //引数に入力したコメントを渡す
+      (data)=>{
+        $('#self-comment').text(data.comment);                  //webapiの返り値でコメント内容を更新
+      });
+  }
+})
 
 /***/ })
 /******/ ]);

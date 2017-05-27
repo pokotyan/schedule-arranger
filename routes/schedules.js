@@ -7,6 +7,7 @@ const Schedule = require('../models/schedule');
 const Candidate = require('../models/candidate');
 const User = require('../models/user');
 const Availability = require('../models/availability');
+const Comment = require('../models/comment');
 
 //ログイン時にしか/schedules/newが表示されないようにするため、new.jadeを表示させる前にミドルウェア「authenticationEnsurer」をかます
 //authenticationEnsurerではすでにログインしてたらnext、ログインしてなかったら/loginへリダイレクトさせる処理を書いてる
@@ -121,19 +122,29 @@ router.get('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
           //ちなみにcandidates（候補） は出欠データがひも付いている。（候補 has_many 出欠）こんな感じで候補にひもづく出欠データを取得できる。
           //ここでは使ってないけどスニペットとして書いとく
           //has_manyのインスタンスはここのapiが使える　http://docs.sequelizejs.com/class/lib/associations/has-many.js~HasMany.html#instance-method-get
-          candidates[0].getAvailabilities().then((availabilities)=>{  //has_manyなテーブルを複数形にして頭にgetを付ける。返り値はpromiseなのでthenで受け取る
-            console.log(availabilities);
+          candidates.forEach((c)=>{
+            c.getAvailabilities().then((availabilities)=>{  //has_manyなテーブルを複数形にして頭にgetを付ける。返り値はpromiseなのでthenで受け取る
+              console.log(availabilities);
+            });
           });
-
-          res.render('schedule',{
-            user: req.user,
-            schedule: schedule,
-            candidates: candidates,
-            users: users,
-            availabilityMapMap: availabilityMapMap
+          //コメント取得
+          Comment.findAll({
+            where: { scheduleId: schedule.scheduleId }
+          }).then((comments) => {
+            const commentMap = new Map();  // key: userId, value: comment
+            comments.forEach((comment) => {
+              commentMap.set(comment.userId, comment.comment);
+            });
+            res.render('schedule', {
+              user: req.user,
+              schedule: schedule,
+              candidates: candidates,
+              users: users,
+              availabilityMapMap: availabilityMapMap,
+              commentMap: commentMap
+            });
           });
-        })
-
+        });
       });
     } else {
       const err = new Error('指定された予定は見つかりません');
