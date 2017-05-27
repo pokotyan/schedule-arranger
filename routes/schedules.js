@@ -26,18 +26,7 @@ router.post('/', authenticationEnsurer, (req, res, next)=>{
     createdBy: req.user.id,
     updatedAt: updatedAt
   }).then((schedule)=>{                                //予定の保存が完了したら(thenのonFulfilledの引数には保存した予定のインスタンスが入ってる)　onFulfilledはPromise が成功したとき呼ばれる関数の事
-    //bulkCreateに渡す候補名のデータ（配列）の用意
-    const candidateNames = req.body.candidates.trim().split('\n').map((s) => s.trim()); //候補名はフォーム上で改行区切りで複数投稿される。なので改行を区切りとして候補名たちの配列を生成(split)し、各候補名の余白を削除した配列を返してる(map)
-    const candidates = candidateNames.map((c)=>{
-      return {
-        candidateName: c,
-        scheduleId: schedule.scheduleId                //先ほど保存した予定のidを候補名の外部キーに設定
-      };
-    });
-    //用意した配列を元に候補名の保存と、保存後のリダイレクト
-    Candidate.bulkCreate(candidates).then(()=>{        //bulkCreateは複数のオブジェクトを保存する関数 http://docs.sequelizejs.com/class/lib/model.js~Model.html#static-method-bulkCreate
-      res.redirect('/schedules/' + schedule.scheduleId);
-    });
+    createCandidatesAndRedirect(parseCandidateNames(req), scheduleId, res);
   });
 });
 //フォームからのデータ取得（req.bodyとreq.param）
@@ -49,6 +38,7 @@ router.post('/', authenticationEnsurer, (req, res, next)=>{
 //req.param http://expressjs.com/ja/api.html#req.params
 //ちなみにURLの:idとかの部分が取れるreq.paramsや、URLのクエリが取得できるreq.queryなどもある
 
+//スケジュール詳細ページの表示
 router.get('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
   let storedSchedule = null;
   let storedCandidates = null;
@@ -157,6 +147,95 @@ router.get('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
     });
   });
 });
+
+//スケジュール編集ページの表示
+router.get('/:scheduleId/edit', authenticationEnsurer,(req, res, nest)=>{
+  Schedule.findOne({
+    where: {
+      scheduleId: req.params.scheduleId
+    }
+  }).then((schedule)=>{
+    if(isMine(req, schedule)){ // スケジュール作成者のみが編集フォームを開ける
+      Candidate.findAll({
+        where: { scheduleId: schedule.scheduleId },
+        order: '"candidateId" ASC'
+      }).then((candidates)=>{
+        res.render('edit', {
+          user: req.user,
+          schedule: schedule,
+          candidates: candidates
+        });
+      });
+    }else{
+      const err = new Error('指定された予定がない、または予定する権限がありません');
+      err.status = 404;
+      next(err);
+    }
+  });
+});
+function isMine(req, schedule){
+  return schedule && parseInt(schedule.createdBy) === parseInt(req.user.id);
+}
+
+//スケジュールの編集と候補の追加の処理。スケジュール編集フォームの送信先（ /schedules/#{schedule.scheduleId}?edit=1 ）がここ
+router.post('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
+  //クエリが想定外の時
+  if(parseInt(req.query.edit) !== 1){
+    const err = new Error('不正なリクエストです');
+    err.status = 400;
+    next(err);
+  }
+  //クエリが想定内なら予定編集の処理を開始
+  Schedule.findOne({
+    where:{
+      scheduleId: req.params.scheduleId
+    }
+  }).then((schedule)=>{
+    //予定作成者しかその予定の編集はできない
+    if(!(isMine(req, schedule))){
+      const err = new Error('指定された予定がない、または、編集する権限がありません');
+      err.status = 404;
+      next(err);
+    }
+    //予定作成者であれば予定編集の処理を続ける
+    const updatedAt = new Date();
+    return schedule.update({
+      scheduleId: schedule.scheduleId,
+      scheduleName: req.body.scheduleName.slice(0, 255),
+      memo: req.body.memo,
+      createdBy: req.user.id,
+      updatedAt: updatedAt
+    });
+  }).then((schedule)=>{
+    const candidateNames = parseCandidateNames(req);                         //改行して複数入力された候補をパースして候補の配列を作成
+    if (candidateNames) {
+      createCandidatesAndRedirect(candidateNames, schedule.scheduleId, res); //候補の配列を用いて、スケジュールにひもづく候補の作成と編集後のスケジュール詳細ページへのリダイレクト
+    } else {                                                                 //候補の配列が空（候補の更新はしていない時）
+      res.redirect('/schedules/' + schedule.scheduleId);                     //編集後のスケジュール詳細ページへリダイレクト
+    }
+  });
+});
+
+//予定の新規作成と予定の編集の時に呼ばれる関数。
+//予定にひもづく候補を作って、作った予定詳細ページにリダイレクトする
+function createCandidatesAndRedirect(candidateNames, scheduleId, res) {
+  //bulkCreateに渡す候補名のデータ（配列）の用意
+  const candidates = candidateNames.map((c)=>{
+    return {
+      candidateName: c,
+      scheduleId: scheduleId
+    };
+  });
+  //用意した配列を元に候補名の保存と、保存後のリダイレクト
+  Candidate.bulkCreate(candidates).then(()=>{  //bulkCreateは複数のオブジェクトを保存する関数 http://docs.sequelizejs.com/class/lib/model.js~Model.html#static-method-bulkCreate
+    res.redirect('/schedules/' + scheduleId);
+  });
+}
+//候補名はフォーム上で改行区切りで複数投稿される。なので改行を区切りとして候補名たちの配列を生成(split)し、各候補名の余白を削除した配列を返してる(map)
+function parseCandidateNames(req) {
+  return req.body.candidates.trim().split('\n').map((s) => s.trim());
+}
+
 
 
 module.exports = router;
