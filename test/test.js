@@ -174,31 +174,31 @@ describe('/schedules/:scheduleId/users/:userId/comments', () => {
 
 //テストのために作ったスケジュールを削除（スケジュールにひもづく出欠情報や候補情報、コメントも消す。）
 function deleteScheduleAggregate(scheduleId, done, err) {
-  //コメントの削除
-  Comment.findAll({
+  //コメントの削除(ここで削除するわけではなく、後でpromise.allに渡して削除する)
+  const promiseCommentDestroy = Comment.findAll({
     where: { scheduleId: scheduleId }
   }).then((comments)=>{ 
-    comments.map((c)=>{ return c.destroy(); });
+    return Promise.all(comments.map((c)=>{ return c.destroy(); }));
   });
 
   Availability.findAll({
     where: { scheduleId: scheduleId }
   }).then((availabilities) => {
-    //まず出欠を削除
+    //出欠削除のpromiseをpromises配列に入れる
     let promises = availabilities.map((a) => { return a.destroy(); }); //scheduleId を元に全ての出欠を取得し削除し。その結果の Promise オブジェクトの配列を取得(destroyの返りちはpromise)
-    Promise.all(promises).then(() => {                                 //ここのpromiseは同じブロックにあるpromiseを指す。一つ上の行のやつ。Promise.allは配列で渡された全ての Promise が終了した際に結果を返す
-      Candidate.findAll({
-        where: { scheduleId: scheduleId }
-      }).then((candidates) => {
-        //次は候補を削除
-        let promises = candidates.map((c) => { return c.destroy(); });
-        Promise.all(promises).then(() => {                             //ここのpromiseは同じブロックにあるpromiseを指す。一つ上の行のやつ
-          //最後に予定を削除
-          Schedule.findById(scheduleId).then((s) => { s.destroy(); });
-          if (err) return done(err);
-          done();
-        });
-      });
+    return Promise.all(promises);
+  }).then(() => {
+    //スケジュールにひもづく候補を取得し次のthenに渡す
+    return Candidate.findAll({
+      where: { scheduleId: scheduleId }
     });
+  }).then((candidates) => {
+    let promises = candidates.map((c) => { return c.destroy(); });    //候補削除のpromiseをpromises配列に入れる
+    promises.push(promiseCommentDestroy);                             //コメント削除のpromiseをpromises配列に入れる
+    return Promise.all(promises)                                      //出欠、候補、コメントの削除を非同期に実行。全て終わったらreturnされる
+  }).then(() => {
+    Schedule.findById(scheduleId).then((s) => { s.destroy(); });      //最後に予定を削除
+    if (err) return done(err);
+    done();
   });
 }
