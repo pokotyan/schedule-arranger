@@ -10358,7 +10358,8 @@ const buttonSelfComment = $('#self-comment-button');
 buttonSelfComment.click(()=>{
   const scheduleId = buttonSelfComment.data('schedule-id');
   const userId = buttonSelfComment.data('user-id');
-  const comment = prompt('コメントを255文字以内で入力してください');  //promptで入力ダイアログを表示し、入力値をcommentに格納
+  const currentComment = $('#self-comment').text();
+  const comment = prompt('コメントを255文字以内で入力してください',currentComment);  //promptで入力ダイアログを表示し、入力値をcommentに格納
   if (comment) {
     $.post(`/schedules/${scheduleId}/users/${userId}/comments`, //webapi（comments.js）を叩く
       { comment: comment },                                     //引数に入力したコメントを渡す
