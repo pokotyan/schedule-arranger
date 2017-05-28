@@ -33,8 +33,11 @@ User.sync().then(()=>{                                                   //users
 //sync()とは？　データモデルの sync 関数が呼ばれると、defineで定義した内容にもとづいて SQL の CREATE TABLE が実行され、データベースとの対応が取れるようになります。
 
 var GitHubStrategy = require('passport-github2').Strategy;
+var FacebookStrategy = require('passport-facebook').Strategy;
 var GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID
 var GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET
+var FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID;
+var FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET;
 
 //認証されたユーザー情報をどのようにセッションに保存し、どのようにセッションから読み出すか
 //下記の実装では、ユーザー情報の全てをそのままオブジェクトとしてセッションに保存し、そのまま全てを読みだす記述となっています。
@@ -65,6 +68,24 @@ passport.use(new GitHubStrategy({
       User.upsert({                  //upsert 関数は、 INSERT または UPDATE を行う。主キーで識別されるデータがない場合にはデータを挿入し、ある場合には渡されたデータを元に更新を行ってくれます。
         userId: profile.id,
         username: profile.username
+      }).then(()=>{
+        done(null, profile);
+      });
+    });
+  }
+));
+passport.use(new FacebookStrategy({
+    clientID: FACEBOOK_APP_ID,
+    clientSecret: FACEBOOK_APP_SECRET,
+    callbackURL: "http://localhost:8000/auth/facebook/callback"
+  },
+  function(accessToken, refreshToken, profile, done) {
+    process.nextTick(function () {
+      console.log(profile);
+      var userId = parseInt(profile.id.slice(0, 9)); //facebookのユーザーidは桁数がすごい多いので、postgresのinteger型の範囲を超えてしまった。なので桁数減らす
+      User.upsert({
+        userId: userId,
+        username: profile.displayName
       }).then(()=>{
         done(null, profile);
       });
@@ -124,6 +145,17 @@ app.get('/auth/github',
 //認証に成功していた場合は、 / というドキュメントルートにリダイレクトするように実装しています。
 app.get('/auth/github/callback',
   passport.authenticate('github', { failureRedirect: '/login' }),
+  function(req, res){
+    res.redirect('/');
+  }
+);
+
+app.get('/auth/facebook',
+  passport.authenticate('facebook', { scope: ['public_profile'] }),
+  function(req, res){
+});
+app.get('/auth/facebook/callback',
+  passport.authenticate('facebook', { failureRedirect: '/login' }),
   function(req, res){
     res.redirect('/');
   }
