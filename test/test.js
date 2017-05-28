@@ -8,6 +8,7 @@ let Schedule = require('../models/schedule');
 let Candidate = require('../models/candidate');
 let Availability = require('../models/availability');
 let Comment = require('../models/comment');
+const deleteScheduleAggregate = require('../routes/schedules').deleteScheduleAggregate;
 
 describe('/login',()=>{
   //before 関数で記述された処理は describe 内のテスト前に実行されます
@@ -172,33 +173,141 @@ describe('/schedules/:scheduleId/users/:userId/comments', () => {
 
 });
 
-//テストのために作ったスケジュールを削除（スケジュールにひもづく出欠情報や候補情報、コメントも消す。）
-function deleteScheduleAggregate(scheduleId, done, err) {
-  //コメントの削除(ここで削除するわけではなく、後でpromise.allに渡して削除する)
-  const promiseCommentDestroy = Comment.findAll({
-    where: { scheduleId: scheduleId }
-  }).then((comments)=>{ 
-    return Promise.all(comments.map((c)=>{ return c.destroy(); }));
+describe('/schedules/:scheduleId?edit=1', ()=>{
+  before(()=>{
+    passportStub.install(app);
+    passportStub.login({ id: 0, username: 'testuser'});
   });
 
-  Availability.findAll({
-    where: { scheduleId: scheduleId }
-  }).then((availabilities) => {
-    //出欠削除のpromiseをpromises配列に入れる
-    let promises = availabilities.map((a) => { return a.destroy(); }); //scheduleId を元に全ての出欠を取得し削除し。その結果の Promise オブジェクトの配列を取得(destroyの返りちはpromise)
-    return Promise.all(promises);
-  }).then(() => {
-    //スケジュールにひもづく候補を取得し次のthenに渡す
-    return Candidate.findAll({
-      where: { scheduleId: scheduleId }
-    });
-  }).then((candidates) => {
-    let promises = candidates.map((c) => { return c.destroy(); });    //候補削除のpromiseをpromises配列に入れる
-    promises.push(promiseCommentDestroy);                             //コメント削除のpromiseをpromises配列に入れる
-    return Promise.all(promises)                                      //出欠、候補、コメントの削除を非同期に実行。全て終わったらreturnされる
-  }).then(() => {
-    Schedule.findById(scheduleId).then((s) => { s.destroy(); });      //最後に予定を削除
-    if (err) return done(err);
-    done();
+  after(()=>{
+    passportStub.logout();
+    passportStub.uninstall(app);
   });
-}
+
+  it('予定が更新でき、候補が追加できる', (done)=>{
+    User.upsert({ 
+      userId:0, 
+      username: 'testuser'
+     }).then(()=>{
+      request(app)
+        //まず、編集するための元のスケジュールを作る
+        .post('/schedules')
+        .send({ scheduleName: 'テスト更新予定1', memo: 'テスト更新メモ1', candidates: 'テスト更新候補1' })
+        .end((req, res)=>{
+          const createdSchedulePath = res.headers.location;
+          const scheduleId = createdSchedulePath.split('/schedules/')[1];
+          //更新がされることをテスト
+          request(app)
+            .post(`/schedules/${scheduleId}?edit=1`)
+            .send({ scheduleName: 'テスト更新予定2', memo: 'テスト更新メモ2', candidates: 'テスト更新候補2' })
+            .end((err, res)=>{
+              //スケジュールがちゃんと更新されているか
+              Schedule.findById(scheduleId).then((s)=>{
+                assert.equal(s.scheduleName, 'テスト更新予定2');
+                assert.equal(s.memo, 'テスト更新メモ2');
+              });
+              //候補がちゃんと更新されているか
+              Candidate.findAll({
+                where: { scheduleId: scheduleId }
+              }).then((candidates) => {
+                assert.equal(candidates.length, 2);
+                assert.equal(candidates[0].candidateName, 'テスト更新候補1');
+                assert.equal(candidates[1].candidateName, 'テスト更新候補2');
+                deleteScheduleAggregate(scheduleId, done, err);              
+              });
+            });
+        });
+    });
+  });
+});
+
+describe('/schedules/:scheduleId?delete=1', () => {
+  before(() => {
+    passportStub.install(app);
+    passportStub.login({ id: 0, username: 'testuser' });
+  });
+
+  after(() => {
+    passportStub.logout();
+    passportStub.uninstall(app);
+  });
+
+  it('予定に関連する全ての情報が削除できる', (done) => {
+    User.upsert({ userId: 0, username: 'testuser' }).then(() => {
+      request(app)
+        .post('/schedules')
+        .send({ scheduleName: 'テスト更新予定1', memo: 'テスト更新メモ1', candidates: 'テスト更新候補1' })
+        .end((err, res) => {
+          const createdSchedulePath = res.headers.location;
+          const scheduleId = createdSchedulePath.split('/schedules/')[1];
+
+          // 出欠作成のプロミスを作成
+          const promiseAvailability = Candidate.findOne({
+            where: { scheduleId: scheduleId }
+          }).then((candidate) => {
+            return new Promise((resolve) => {
+              request(app)
+                .post(`/schedules/${scheduleId}/users/${0}/candidates/${candidate.candidateId}`)
+                .send({ availability: 2 }) // 出席に更新
+                .end((err, res) => {
+                  if (err) done(err);
+                  resolve();
+                });
+            });
+          });
+
+          // コメント作成のプロミスを作成
+          const promiseComment = new Promise((resolve) => {
+            request(app)
+              .post(`/schedules/${scheduleId}/users/${0}/comments`)
+              .send({ comment: 'testcomment' })
+              .expect('{"status":"OK","comment":"testcomment"}')
+              .end((err, res) => {
+                if (err) done(err);
+                resolve();
+              });
+          });
+
+          // 削除を実行するプロミスの作成
+          const promiseDeleted = Promise.all([promiseAvailability, promiseComment]).then(() => { //出欠作成とコメント作成が終わったら
+            return new Promise((resolve) => {                                                    //削除を実行するプロミスを返す
+              request(app)
+                .post(`/schedules/${scheduleId}?delete=1`)
+                .end((err, res) => {
+                  if (err) done(err);
+                  resolve();
+                });
+            });
+          });
+
+          // テスト
+          promiseDeleted.then(() => {             //削除を実行
+            //削除後、ちゃんと削除されているか確認
+            const p1 = Comment.findAll({
+              where: { scheduleId: scheduleId }
+            }).then((comments) => {
+              assert.equal(comments.length, 0);
+            });
+            const p2 = Availability.findAll({
+              where: { scheduleId: scheduleId }
+            }).then((availabilities) => {
+              assert.equal(availabilities.length, 0);
+            });
+            const p3 = Candidate.findAll({
+              where: { scheduleId: scheduleId }
+            }).then((candidates) => {
+              assert.equal(candidates.length, 0);
+            });
+            const p4 = Schedule.findById(scheduleId)
+              .then((schedule) => {
+                assert.equal(!schedule, true);  //schedule が null であることをテスト
+            });
+            Promise.all([p1, p2, p3, p4]).then(() => {
+              if (err) return done(err);
+              done();
+            });
+          });
+        });
+    });
+  });
+});
