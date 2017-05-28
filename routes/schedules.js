@@ -17,13 +17,14 @@ router.get('/new', authenticationEnsurer, (req, res, next)=>{
 
 //予定作成フォームの送信先がここ　form(method="post", action="/schedules")
 router.post('/', authenticationEnsurer, (req, res, next)=>{
+  var userId = String(req.user.id).length > 9 ? parseInt(String(req.user.id).slice(0, 9)) : req.user.id  //facebookのidは長すぎるので短くする
   const scheduleId = uuid.v4();
   const updatedAt = new Date();
   Schedule.create({
     scheduleId: scheduleId,
     scheduleName: req.body.scheduleName.slice(0, 255), //DBの長さ制限があるため、.slice(0, 255) によって、予定名は255文字以内の文字の長さにする
     memo: req.body.memo,
-    createdBy: req.user.id,
+    createdBy: userId,
     updatedAt: updatedAt
   }).then((schedule)=>{                                //予定の保存が完了したら(thenのonFulfilledの引数には保存した予定のインスタンスが入ってる)　onFulfilledはPromise が成功したとき呼ばれる関数の事
     createCandidatesAndRedirect(parseCandidateNames(req), scheduleId, res);
@@ -93,15 +94,16 @@ router.get('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
     //閲覧ユーザーと出欠に紐づくユーザーからユーザー Map (キー:ユーザー ID, 値:ユーザー) を作る
     const usersMap = new Map();                        // key: userId, value: User
     //まずは閲覧ユーザーの情報を入れる
-    usersMap.set(parseInt(req.user.id),{               //parseIntは文字列を整数に変換してる
+    const userId = String(req.user.id).length > 9 ? parseInt(String(req.user.id).slice(0, 9)) : parseInt(req.user.id)  //facebookのidは長すぎるので短くする
+    usersMap.set(userId,{
       isSelf: true,                                    //リクエストが来たユーザーidはcurrent_userなのでisSelfはtrue
-      userId: parseInt(req.user.id),
-      username: req.user.username
+      userId: userId,
+      username: req.user.username || req.user.displayName
     });
     //出欠データを回してそれぞれの出欠データにひもづくユーザー情報を入れる
     availabilities.forEach((a)=>{
       usersMap.set(a.user.userId, {
-        isSelf: parseInt(req.user.id) === a.user.userId, //リクエストが来たユーザーでないならisSelfではないのでfalse
+        isSelf: userId === a.user.userId, //リクエストが来たユーザーでないならisSelfではないのでfalse
         userId: a.user.userId,
         username: a.user.username
       });
@@ -174,7 +176,8 @@ router.get('/:scheduleId/edit', authenticationEnsurer,(req, res, nest)=>{
   });
 });
 function isMine(req, schedule){
-  return schedule && parseInt(schedule.createdBy) === parseInt(req.user.id);
+  const userId = String(req.user.id).length > 9 ? parseInt(String(req.user.id).slice(0, 9)) : parseInt(req.user.id)  //facebookのidは長すぎるので短くする
+  return schedule && parseInt(schedule.createdBy) === userId;
 }
 
 //スケジュールの編集と候補の追加の処理。スケジュール編集フォームの送信先（ /schedules/#{schedule.scheduleId}?edit=1 ）がここ
@@ -194,12 +197,13 @@ router.post('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
         next(err);
       }
       //予定作成者であれば予定編集の処理を続ける
+      const userId = String(req.user.id).length > 9 ? String(req.user.id).slice(0, 9) : req.user.id  //facebookのidは長すぎるので短くする
       const updatedAt = new Date();
       return schedule.update({
         scheduleId: schedule.scheduleId,
         scheduleName: req.body.scheduleName.slice(0, 255),
         memo: req.body.memo,
-        createdBy: req.user.id,
+        createdBy: userId,
         updatedAt: updatedAt
       });
     }).then((schedule)=>{

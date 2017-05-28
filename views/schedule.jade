@@ -8,7 +8,8 @@ block content
       p(style="white-space:pre;") #{schedule.memo}
     div(class="panel-footer")
       p 作成者: #{schedule.user.username}
-  - var isMine = parseInt(user.id) === schedule.user.userId
+  - var userId = String(user.id).length > 9 ? parseInt(String(user.id).slice(0, 9)) : parseInt(user.id)
+  - var isMine = userId === schedule.user.userId
   if isMine
     div
       a(class="btn btn-info" href="/schedules/#{schedule.scheduleId}/edit") この予定を編集する
@@ -17,7 +18,7 @@ block content
     tr
       th 予定
       each user in users
-        th #{user.username}
+        th #{user.username || user.displayName}
     each candidate in candidates
       tr
         th #{candidate.candidateName}

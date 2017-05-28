@@ -15,7 +15,7 @@ html
         ul(class="nav navbar-nav navbar-right")
           if user
             li
-              a(href="/logout") #{user.username} をログアウト
+              a(href="/logout") #{user.username || user.displayName} をログアウト
           else
             li
               a(href="/login") ログイン
