@@ -8,6 +8,7 @@ let Schedule = require('../models/schedule');
 let Candidate = require('../models/candidate');
 let Availability = require('../models/availability');
 let Comment = require('../models/comment');
+const deleteScheduleAggregate = require('../routes/schedules').deleteScheduleAggregate;
 
 describe('/login',()=>{
   //before 関数で記述された処理は describe 内のテスト前に実行されます
@@ -219,35 +220,3 @@ describe('/schedules/:scheduleId?edit=1', ()=>{
     });
   });
 });
-
-
-//テストのために作ったスケジュールを削除（スケジュールにひもづく出欠情報や候補情報、コメントも消す。）
-function deleteScheduleAggregate(scheduleId, done, err) {
-  //コメントの削除(ここで削除するわけではなく、後でpromise.allに渡して削除する)
-  const promiseCommentDestroy = Comment.findAll({
-    where: { scheduleId: scheduleId }
-  }).then((comments)=>{ 
-    return Promise.all(comments.map((c)=>{ return c.destroy(); }));
-  });
-
-  Availability.findAll({
-    where: { scheduleId: scheduleId }
-  }).then((availabilities) => {
-    //出欠削除のpromiseをpromises配列に入れる
-    let promises = availabilities.map((a) => { return a.destroy(); }); //scheduleId を元に全ての出欠を取得し削除し。その結果の Promise オブジェクトの配列を取得(destroyの返りちはpromise)
-    return Promise.all(promises);
-  }).then(() => {
-    //スケジュールにひもづく候補を取得し次のthenに渡す
-    return Candidate.findAll({
-      where: { scheduleId: scheduleId }
-    });
-  }).then((candidates) => {
-    let promises = candidates.map((c) => { return c.destroy(); });    //候補削除のpromiseをpromises配列に入れる
-    promises.push(promiseCommentDestroy);                             //コメント削除のpromiseをpromises配列に入れる
-    return Promise.all(promises)                                      //出欠、候補、コメントの削除を非同期に実行。全て終わったらreturnされる
-  }).then(() => {
-    Schedule.findById(scheduleId).then((s) => { s.destroy(); });      //最後に予定を削除
-    if (err) return done(err);
-    done();
-  });
-}

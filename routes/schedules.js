@@ -178,43 +178,80 @@ function isMine(req, schedule){
 }
 
 //スケジュールの編集と候補の追加の処理。スケジュール編集フォームの送信先（ /schedules/#{schedule.scheduleId}?edit=1 ）がここ
+//スケジュールの削除処理。スケジュール削除ボタンの送信先（ /schedules/#{schedule.scheduleId}?delete=1 ）がここ
 router.post('/:scheduleId', authenticationEnsurer, (req, res, next)=>{
+  //クエリが予定編集の時
+  if(parseInt(req.query.edit) === 1){
+    Schedule.findOne({
+      where:{
+        scheduleId: req.params.scheduleId
+      }
+    }).then((schedule)=>{
+      //予定作成者しかその予定の編集はできない
+      if(!(isMine(req, schedule))){
+        const err = new Error('指定された予定がない、または、編集する権限がありません');
+        err.status = 404;
+        next(err);
+      }
+      //予定作成者であれば予定編集の処理を続ける
+      const updatedAt = new Date();
+      return schedule.update({
+        scheduleId: schedule.scheduleId,
+        scheduleName: req.body.scheduleName.slice(0, 255),
+        memo: req.body.memo,
+        createdBy: req.user.id,
+        updatedAt: updatedAt
+      });
+    }).then((schedule)=>{
+      const candidateNames = parseCandidateNames(req);                         //改行して複数入力された候補をパースして候補の配列を作成
+      if (candidateNames) {
+        createCandidatesAndRedirect(candidateNames, schedule.scheduleId, res); //候補の配列を用いて、スケジュールにひもづく候補の作成と編集後のスケジュール詳細ページへのリダイレクト
+      } else {                                                                 //候補の配列が空（候補の更新はしていない時）
+        res.redirect('/schedules/' + schedule.scheduleId);                     //編集後のスケジュール詳細ページへリダイレクト
+      }
+    });
+  //クエリが削除の時
+  } else if(parseInt(req.query.delete) === 1){
+    deleteScheduleAggregate(req.params.scheduleId, ()=>{
+      res.redirect('/');
+    });
   //クエリが想定外の時
-  if(parseInt(req.query.edit) !== 1){
+  } else {
     const err = new Error('不正なリクエストです');
     err.status = 400;
-    next(err);
+    next(err);    
   }
-  //クエリが想定内なら予定編集の処理を開始
-  Schedule.findOne({
-    where:{
-      scheduleId: req.params.scheduleId
-    }
-  }).then((schedule)=>{
-    //予定作成者しかその予定の編集はできない
-    if(!(isMine(req, schedule))){
-      const err = new Error('指定された予定がない、または、編集する権限がありません');
-      err.status = 404;
-      next(err);
-    }
-    //予定作成者であれば予定編集の処理を続ける
-    const updatedAt = new Date();
-    return schedule.update({
-      scheduleId: schedule.scheduleId,
-      scheduleName: req.body.scheduleName.slice(0, 255),
-      memo: req.body.memo,
-      createdBy: req.user.id,
-      updatedAt: updatedAt
-    });
-  }).then((schedule)=>{
-    const candidateNames = parseCandidateNames(req);                         //改行して複数入力された候補をパースして候補の配列を作成
-    if (candidateNames) {
-      createCandidatesAndRedirect(candidateNames, schedule.scheduleId, res); //候補の配列を用いて、スケジュールにひもづく候補の作成と編集後のスケジュール詳細ページへのリダイレクト
-    } else {                                                                 //候補の配列が空（候補の更新はしていない時）
-      res.redirect('/schedules/' + schedule.scheduleId);                     //編集後のスケジュール詳細ページへリダイレクト
-    }
-  });
 });
+
+function deleteScheduleAggregate(scheduleId, done, err){             //errはここでは使わないが、test/test.jsでこの関数を使った時に使う可能性がある
+  //コメントの削除
+  Comment.findAll({
+    where: { scheduleId: scheduleId }
+  }).then((comments)=>{
+    return Promise.all(comments.map((c)=>{ return c.destroy(); }));  //destroyの返り値はpromiseなので、それを引数にPromise.allで削除実行
+  });
+  //出欠の削除
+  Availability.findAll({
+    where: { scheduleId: scheduleId }
+  }).then((availabilities)=>{
+    return Promise.all(availabilities.map((a)=>{ return a.destroy(); }));
+  //候補の削除
+  }).then(()=>{
+    return Candidate.findAll({
+      where: { scheduleId: scheduleId }
+    });
+  }).then((candidates)=>{
+    return Promise.all(candidates.map((c)=>{ return c.destroy(); }));
+  //スケジュールの削除
+  }).then(()=>{
+    return Schedule.findById(scheduleId).then((s)=>{ return s.destroy(); });
+  //引数でもらったコールバック（done）の実行
+  }).then(()=>{
+    if (err) return done(err);
+    done();
+  });
+}
+router.deleteScheduleAggregate = deleteScheduleAggregate;  // test/test.jsでも使うので公開apiにする
 
 //予定の新規作成と予定の編集の時に呼ばれる関数。
 //予定にひもづく候補を作って、作った予定詳細ページにリダイレクトする
