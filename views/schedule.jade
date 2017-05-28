@@ -24,9 +24,11 @@ block content
         each user in users
           - var availability = availabilityMapMap.get(user.userId).get(candidate.candidateId)
           - var availabilityLabels = ['欠', '？', '出'];
-          td
+          - var buttonStyles = ['btn-danger', 'btn-default', 'btn-success'];
+          - var tdStyles = ['bg-danger', 'bg-default', 'bg-success'];
+          td(class="#{tdStyles[availability]}")
             if user.isSelf
-              button(class="availability-toggle-button btn-lg"
+              button(class="availability-toggle-button btn-lg #{buttonStyles[availability]}"
                 data-schedule-id="#{schedule.scheduleId}"
                 data-user-id="#{user.userId}"
                 data-candidate-id="#{candidate.candidateId}"

@@ -10368,9 +10368,19 @@ $('.availability-toggle-button').each((i, e) => {
     $.post(`/schedules/${scheduleId}/users/${userId}/candidates/${candidateId}`,
       { availability: nextAvailability },             //webapiに渡す引数
       (data) => {
+        //出欠状況のテキストを更新
         button.data('availability', data.availability);
         const availabilityLabels = ['欠', '？', '出'];
         button.text(availabilityLabels[data.availability]);
+
+        //ボタンの色とtdの背景色を出欠の状態によって変更させる
+        const buttonStyles = ['btn-danger', 'btn-default', 'btn-success'];
+        button.removeClass('btn-danger btn-default btn-success');
+        button.addClass(buttonStyles[data.availability]);
+
+        const tdStyles = ['bg-danger', 'bg-default', 'bg-success'];
+        button.parent().removeClass('bg-danger bg-default bg-success');     //button.parent()はクリックしたボタンの親要素（つまりtd）
+        button.parent().addClass(tdStyles[data.availability]);
       });
   });
 });
