@@ -1,6 +1,7 @@
 var express = require('express');
 var router = express.Router();
 const Schedule = require('../models/schedule');
+const moment = require('moment-timezone');
 
 /* GET home page. */
 router.get('/', function(req, res, next) {
@@ -12,6 +13,11 @@ router.get('/', function(req, res, next) {
       },
       order: '"updatedAt" DESC'                   //作成日順で並べ替え
     }).then((schedules)=>{                      //予定データの取得ができたら
+      //updatedAt（更新日時）をビューで用いるが、そのままだとutc表示のため見にくい。なので見やすい時刻にしたものを新たに「formattedUpdatedAt」というプロパティに格納する
+      schedules.forEach((schedule)=>{
+        schedule.formattedUpdatedAt = moment(schedule.updatedAt).tz('Asia/Tokyo').format('YYYY/MM/DD HH:mm');
+      });
+      //indexビューの表示
       res.render('index',{
         title: title,
         user: req.user,
