@@ -1,5 +1,9 @@
 'use strict';
 const $ = require('jquery');
+//グローバルオブジェクトの jQuery というプロパティに jQuery を代入。これを行わないと Bootstrap が jQuery を利用できない
+const global = Function('return this;')(); //即時関数の実行。Function 関数は、引数で受け取った文字列をもとに関数を生成する
+global.jQuery = $;
+const bootstrap = require('bootstrap');
 
 //自身の出欠の更新
 $('.availability-toggle-button').each((i, e) => {
