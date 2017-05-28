@@ -9,15 +9,17 @@ const Candidate = require('../models/candidate');
 const User = require('../models/user');
 const Availability = require('../models/availability');
 const Comment = require('../models/comment');
+const csrf = require('csurf');
+const csrfProtection = csrf({ cookie: true });
 
 //ログイン時にしか/schedules/newが表示されないようにするため、new.jadeを表示させる前にミドルウェア「authenticationEnsurer」をかます
 //authenticationEnsurerではすでにログインしてたらnext、ログインしてなかったら/loginへリダイレクトさせる処理を書いてる
-router.get('/new', authenticationEnsurer, (req, res, next)=>{
-  res.render('new', { user: req.user });
+router.get('/new', authenticationEnsurer, csrfProtection, (req, res, next)=>{
+  res.render('new', { user: req.user, csrfToken: req.csrfToken() });
 });
 
 //予定作成フォームの送信先がここ　form(method="post", action="/schedules")
-router.post('/', authenticationEnsurer, parseReqFacebook, (req, res, next)=>{
+router.post('/', authenticationEnsurer, parseReqFacebook, csrfProtection, (req, res, next)=>{
   const scheduleId = uuid.v4();
   const updatedAt = new Date();
   Schedule.create({
@@ -150,7 +152,7 @@ router.get('/:scheduleId', authenticationEnsurer, parseReqFacebook, (req, res, n
 });
 
 //スケジュール編集ページの表示
-router.get('/:scheduleId/edit', authenticationEnsurer, parseReqFacebook, (req, res, nest)=>{
+router.get('/:scheduleId/edit', authenticationEnsurer, parseReqFacebook, csrfProtection,(req, res, nest)=>{
   Schedule.findOne({
     where: {
       scheduleId: req.params.scheduleId
@@ -164,7 +166,8 @@ router.get('/:scheduleId/edit', authenticationEnsurer, parseReqFacebook, (req, r
         res.render('edit', {
           user: req.user,
           schedule: schedule,
-          candidates: candidates
+          candidates: candidates,
+          csrfToken: req.csrfToken()
         });
       });
     }else{
@@ -180,7 +183,7 @@ function isMine(req, schedule){
 
 //スケジュールの編集と候補の追加の処理。スケジュール編集フォームの送信先（ /schedules/#{schedule.scheduleId}?edit=1 ）がここ
 //スケジュールの削除処理。スケジュール削除ボタンの送信先（ /schedules/#{schedule.scheduleId}?delete=1 ）がここ
-router.post('/:scheduleId', authenticationEnsurer, parseReqFacebook, (req, res, next)=>{
+router.post('/:scheduleId', authenticationEnsurer, parseReqFacebook, csrfProtection, (req, res, next)=>{
   //クエリが予定編集の時
   if(parseInt(req.query.edit) === 1){
     Schedule.findOne({
