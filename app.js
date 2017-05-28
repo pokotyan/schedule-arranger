@@ -146,7 +146,7 @@ app.get('/auth/github',
 app.get('/auth/github/callback',
   passport.authenticate('github', { failureRedirect: '/login' }),
   function(req, res){
-    res.redirect('/');
+    rootOrloginFromRedirect(req, res);
   }
 );
 
@@ -157,9 +157,26 @@ app.get('/auth/facebook',
 app.get('/auth/facebook/callback',
   passport.authenticate('facebook', { failureRedirect: '/login' }),
   function(req, res){
-    res.redirect('/');
+    rootOrloginFromRedirect(req, res);
   }
 );
+
+//reqにloginFromクッキーがあれば、ログイン後そのページへリダイレクト。
+//loginFromクッキーがないなら、ルートへリダイレクトさせる。
+function rootOrloginFromRedirect(req, res){
+  var loginFrom = req.cookies.loginFrom;  //loginFromクッキーを取得
+  // オープンリダイレクタ脆弱性対策
+  // オープンリダイレクタ脆弱性に対処すべく、 http:// か https:// ではじまる URL でしかリダイレクトを実施しないように対策
+  // オープンリダイレクタ脆弱性:外部サイトに勝手にリダイレクトさせ、信用あるページであるように見せるような脆弱性
+  if(loginFrom &&                         //loginFromクッキーがちゃんとあれば、
+    loginFrom.indexOf('http://') < 0 &&
+    loginFrom.indexOf('https://') < 0) {
+    res.clearCookie('loginFrom');
+    res.redirect(loginFrom);
+  } else {
+    res.redirect('/');
+  }
+}
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
