@@ -83,18 +83,22 @@ router.get('/:scheduleId', authenticationEnsurer, parseReqFacebook, (req, res, n
     });
   }).then((availabilities)=>{
     // 出欠MapMap(キー:ユーザー ID, 値:出欠Map(キー:候補 ID, 値:出欠)) を作成する
-    // 最終的にavailabilityMapMapはこんな感じになる　Map { '15885373' => Map { 13 => 0, 14 => 0, 15 => 0 } }
-    const availabilityMapMap = new Map();              // key: userId, value: Map(key: candidateId, availability)
+    // Map { '15885373' => Map { 13 => 0, 14 => 0, 15 => 0 } }
+    // key: userId, value: Map(key: candidateId, availability)
+
+    //まずは出欠が存在するもので二重mapを作る
+    const availabilityMapMap = new Map();
     availabilities.forEach((a)=>{
       //内側のmapを作る
-      const map = availabilityMapMap.get(a.user.userId) || new Map();
-      map.set(a.candidateId, a.availability);
+      const insideMap = availabilityMapMap.get(a.user.userId) || new Map();  //ひとりのユーザーは複数の出欠を持つので、そのユーザーの出欠データを扱うが初めてならnew Mapする
+      insideMap.set(a.candidateId, a.availability);                          //ユーザーの出欠データ（一つ分）を入れる
       //作った内側のmapを外側のmapのバリューにセットする
-      availabilityMapMap.set(a.user.userId, map);      //includeでテーブルを結合しておいたからa.user.userIdが使える
+      availabilityMapMap.set(a.user.userId, insideMap);                      //includeでテーブルを結合しておいたからa.user.userIdが使える
     });
 
-    //閲覧ユーザーと出欠に紐づくユーザーからユーザー Map (キー:ユーザー ID, 値:ユーザー) を作る
-    const usersMap = new Map();                        // key: userId, value: User
+    //閲覧ユーザーと出欠に紐づくユーザー（つまりその予定に関するすべてのユーザー）から
+    //ユーザー Map (キー:ユーザー ID, 値:ユーザー) を作る
+    const usersMap = new Map();
     //まずは閲覧ユーザーの情報を入れる
     usersMap.set(req.user.id,{
       isSelf: true,                                    //リクエストが来たユーザーidはcurrent_userなのでisSelfはtrue
@@ -109,19 +113,23 @@ router.get('/:scheduleId', authenticationEnsurer, parseReqFacebook, (req, res, n
         username: a.user.username
       });
     });
+    //全ユーザーのisSelf,userId,usernameのオブジェクトが詰まった配列を作る
+    const users = Array.from(usersMap).map((userMap)=>{ return userMap[1] });
 
-    // 全ユーザー、全候補で二重ループしてそれぞれの出欠の値がない場合には、「欠席」を設定する
-    const users = Array.from(usersMap).map((userMap)=>{ return userMap[1] });  //各ユーザーのisSelf,userId,usernameのオブジェクトが詰まった配列を作る
-    users.forEach((u)=>{                                                       //ユーザーを回して
-      storedCandidates.forEach((c)=>{                                                //候補データを回して（candidatesはかなり前のthenを見て。）
-        const map = availabilityMapMap.get(u.userId) || new Map();             //そのユーザーのバリュー(map)を処理するのが初めてならnew Mapする
-        const a = map.get(c.candidateId) || 0;                                 // デフォルト値は 0 を利用
-        map.set(c.candidateId, a);
-        availabilityMapMap.set(u.userId, map);
+    // 全ユーザー、全候補で二重ループしてそれぞれの出欠の値を設定。出欠の値がない場合には、「欠席」を設定する
+    // availabilityMapMapはあくまで「出欠データ」が存在するもののみのデータなので、「出欠データ」がないものも含めてavailabilityMapMapを作り直す。
+    // 「全ユーザー」はそれぞれの「候補」に対して「出欠」を選択する
+    // なのでまず「全ユーザー（users）」を回して、その中で「候補（storedCandidates）」を回す
+    users.forEach((u)=>{                                                     //ユーザーを回して
+      storedCandidates.forEach((c)=>{                                        //ユーザーの各候補を回す
+        //内側のmap（出欠データ）の作成（繰り返しのたびにinsideMapはデータが増えていく）
+        const insideMap = availabilityMapMap.get(u.userId) || new Map();     //ユーザーの出欠データ（map）がすでにあるなら取り出す。ないならnew Map（内側のmapのガワを作る）
+        const a = insideMap.get(c.candidateId) || 0;                         //現在回している候補の出欠データががあるなら取り出す。ないならデフォルトは0。（内側のmapのバリューに使う）
+        insideMap.set(c.candidateId, a);                                     //現在回してる候補に対する出欠をセットする。
+        //作った内側のmapを外側のmapのバリューにセットする
+        availabilityMapMap.set(u.userId, insideMap);                         //現在回しているユーザーに作った出欠データ(insideMap)をセットする（外側のmapのバリューに内側のmapをセットする）
       });
     });
-
-    console.log(availabilityMapMap) //todo 除去
 
     //ちなみにcandidates（候補） は出欠データがひも付いている。（候補 has_many 出欠）こんな感じで候補にひもづく出欠データを取得できる。
     //ここでは使ってないけどスニペットとして書いとく
